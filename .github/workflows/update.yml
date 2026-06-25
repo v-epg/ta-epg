@@ -1,0 +1,54 @@
+name: Tata Play EPG
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Checkout Private Repo
+        uses: actions/checkout@v4
+        with:
+          repository: vgit-push/tataplay
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: private-src
+
+      - name: Generate EPG
+        env:
+          SUNNXT_PROXY: ${{ secrets.SUNNXT_PROXY }}
+        run: |
+          python3 private-src/tataplay_epg.py \
+            --days 3 \
+            --output tataplay_epg.xml \
+            --gz
+
+      - name: Show Stats
+        run: |
+          ls -lh tataplay_epg.xml tataplay_epg.xml.gz
+          echo "Channels   : $(grep -c '<channel' tataplay_epg.xml)"
+          echo "Programmes : $(grep -c '<programme' tataplay_epg.xml)"
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tataplay_epg.xml tataplay_epg.xml.gz
+          git diff --staged --quiet && exit 0
+          git commit -m "EPG Update $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
